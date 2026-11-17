@@ -133,6 +133,27 @@ def test_long_track_with_trailing_silence_places_outro_in_final_region(tmp_path)
     assert outros[0].time_seconds < 170.0
 
 
+def test_long_track_cue_times_use_analysis_windows_not_display_buckets(tmp_path):
+    audio_path = tmp_path / "long-energy-changes.wav"
+    write_segmented_wav(
+        audio_path,
+        [("silence", 20.0, 0.0), ("tone", 30.0, 0.2), ("tone", 50.0, 0.8)],
+        frame_rate=8_000,
+    )
+
+    result = analyze_audio(audio_path)
+
+    assert result.sidecar is not None
+    intro = next(cue for cue in result.sidecar.cues if cue.label == "intro")
+    shift = next(cue for cue in result.sidecar.cues if cue.label == "energy_shift")
+    assert 19.75 <= intro.time_seconds <= 20.25
+    assert 49.75 <= shift.time_seconds <= 50.25
+    summary = result.sidecar.analysis.energy_summary
+    assert summary is not None
+    assert len(summary.normalized_envelope) <= 200
+    assert summary.window_size_seconds == 0.25
+
+
 def test_short_demo_like_file_still_produces_reasonable_outro(tmp_path):
     audio_path = tmp_path / "demo-outro.wav"
     write_segmented_wav(
@@ -659,6 +680,23 @@ def test_ffmpeg_failure_for_non_wav_creates_safe_placeholder(tmp_path, monkeypat
         "ffmpeg decoding failed for .flac file; duration, energy, and cue detection are unavailable. "
         "Detail: decode failed"
     ]
+
+
+def test_ffmpeg_executable_access_failure_creates_safe_placeholder(tmp_path, monkeypatch):
+    audio_path = tmp_path / "track.flac"
+    audio_path.write_bytes(b"synthetic invalid FLAC")
+
+    def unavailable_ffmpeg(*args, **kwargs):
+        raise OSError(22, "The file cannot be accessed by the system")
+
+    monkeypatch.setattr(analysis_module.subprocess, "run", unavailable_ffmpeg)
+
+    result = analyze_audio(audio_path)
+
+    assert result.sidecar is not None
+    assert result.sidecar.analysis.duration_seconds is None
+    assert result.sidecar.cues == []
+    assert "ffmpeg could not be started" in result.sidecar.warnings[0]
 
 
 def test_non_wav_ffmpeg_decode_does_not_modify_source_file(tmp_path, monkeypatch):

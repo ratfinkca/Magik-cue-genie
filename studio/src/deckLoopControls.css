@@ -1,0 +1,19 @@
+.deck-loop-controls { display: grid; min-width: 0; gap: 4px; padding-top: 5px; border-top: 1px solid var(--line); }
+.deck-loop-heading, .deck-loop-actions, .deck-loop-lengths, .deck-loop-pending { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.deck-loop-heading { justify-content: space-between; font-size: 11px; }
+.deck-loop-status, .deck-loop-timing, .deck-loop-beat-unit { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.deck-loop-status { color: var(--deck-color); }
+.deck-loop-controls .quiet, .deck-loop-controls .segments button { min-height: 26px; padding-inline: 6px; font-size: 11px; }
+.deck-loop-controls .quiet[aria-pressed="true"], .deck-loop-controls .segments button[aria-pressed="true"] {
+  border-color: var(--deck-color);
+  color: var(--deck-color);
+  background: color-mix(in srgb, var(--deck-color) 16%, var(--inset));
+}
+.deck-loop-lengths .segments { flex: 0 1 auto; flex-wrap: wrap; }
+.deck-loop-lengths .segments button { min-width: 24px; padding-inline: 4px; }
+.deck-loop-lengths .segments button[data-one-beat]:not(:disabled) {
+  color: var(--deck-color);
+  background: color-mix(in srgb, var(--deck-color) 13%, var(--inset));
+}
+.deck-loop-pending { justify-content: space-between; }
+.deck-loop-pending .quiet { min-height: 22px; }

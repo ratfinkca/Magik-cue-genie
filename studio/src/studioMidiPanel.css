@@ -1,0 +1,40 @@
+.studio-midi {
+  box-sizing: border-box;
+  width: min(530px, calc(100% - 24px));
+  max-height: min(750px, calc(100dvh - 28px));
+  padding: 16px;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.studio-midi[open] { display: flex; flex-direction: column; gap: 9px; }
+.studio-midi::backdrop { background: rgb(8 13 17 / 72%); }
+.studio-midi h2 { margin: 0; font-size: 17px; }
+.studio-midi-heading, .studio-midi-device, .studio-midi-groups {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.studio-midi-heading { justify-content: space-between; }
+.studio-midi-device label { display: flex; flex: 1 1 190px; min-width: 0; gap: 6px; align-items: center; }
+.studio-midi-device select { flex: 1 1 auto; min-width: 0; }
+.studio-midi-status:empty { display: none; }
+.studio-midi-status p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.studio-midi [aria-pressed="true"] { border-color: var(--mint); color: var(--mint); }
+.studio-midi-targets { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.studio-midi-targets ul { margin: 0; padding: 0; list-style: none; }
+.studio-midi-targets li {
+  display: grid;
+  grid-template-columns: minmax(48px, 1fr) minmax(62px, 94px) minmax(53px, auto) minmax(59px, auto);
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.studio-midi-control { color: var(--muted); font-variant-numeric: tabular-nums; }
+.studio-midi-targets span { overflow-wrap: anywhere; }
+.studio-midi-targets li > button { justify-content: center; padding-inline: 5px; }
+.studio-midi-targets li > button:last-child { grid-column: 4; }

@@ -114,13 +114,15 @@ class BpmAnalysis:
     tempo_candidates_debug: dict[str, Any]
 
 
-def analyze_audio(audio_path: Path, settings: AnalysisSettings | None = None) -> AudioAnalysisResult:
+def analyze_audio(audio_path: Path, settings: AnalysisSettings | None = None, *,
+                  include_cues: bool = True) -> AudioAnalysisResult:
+    """Summarize decoded audio, optionally leaving cue suggestions to the caller."""
     settings = settings or AnalysisSettings()
     if audio_path.suffix.lower() != ".wav":
-        return _analyze_non_wav_with_ffmpeg(audio_path, settings)
+        return _analyze_non_wav_with_ffmpeg(audio_path, settings, include_cues=include_cues)
 
     try:
-        duration_seconds, energy_summary, bpm_analysis = _analyze_wav(audio_path, settings)
+        duration_seconds, energy_summary, bpm_analysis, cue_energy = _analyze_wav(audio_path, settings)
     except (EOFError, wave.Error) as error:
         skipped_file = SkippedFile(
             source_file=audio_path.name,
@@ -129,19 +131,29 @@ def analyze_audio(audio_path: Path, settings: AnalysisSettings | None = None) ->
         )
         return AudioAnalysisResult(sidecar=None, skipped_file=skipped_file)
 
-    return _audio_analysis_result_for_wav_data(audio_path.name, duration_seconds, energy_summary, settings, bpm_analysis)
+    return _audio_analysis_result_for_wav_data(
+        audio_path.name, duration_seconds, energy_summary, settings, bpm_analysis,
+        cue_energy_summary=cue_energy, include_cues=include_cues,
+    )
 
 
-def _analyze_non_wav_with_ffmpeg(audio_path: Path, settings: AnalysisSettings) -> AudioAnalysisResult:
+def _analyze_non_wav_with_ffmpeg(audio_path: Path, settings: AnalysisSettings, *,
+                                include_cues: bool = True) -> AudioAnalysisResult:
     with tempfile.TemporaryDirectory(prefix="magik-cue-genie-") as temp_dir:
         decoded_wav_path = Path(temp_dir) / f"{audio_path.stem}.decoded.wav"
         try:
             _decode_to_temporary_wav(audio_path, decoded_wav_path)
-            duration_seconds, energy_summary, bpm_analysis = _analyze_wav(decoded_wav_path, settings)
+            duration_seconds, energy_summary, bpm_analysis, cue_energy = _analyze_wav(decoded_wav_path, settings)
         except FileNotFoundError:
             warning = (
                 f"ffmpeg was not found; duration, energy, and cue detection are unavailable "
                 f"for {audio_path.suffix.lower()} files."
+            )
+            return AudioAnalysisResult(sidecar=TrackSidecar.placeholder_for(audio_path, warnings=[warning]), warning=warning)
+        except OSError:
+            warning = (
+                f"ffmpeg could not be started; duration, energy, and cue detection are unavailable "
+                f"for {audio_path.suffix.lower()} files. Check the ffmpeg installation."
             )
             return AudioAnalysisResult(sidecar=TrackSidecar.placeholder_for(audio_path, warnings=[warning]), warning=warning)
         except subprocess.CalledProcessError as error:
@@ -169,6 +181,7 @@ def _analyze_non_wav_with_ffmpeg(audio_path: Path, settings: AnalysisSettings) -
             bpm_analysis=bpm_analysis,
             warnings=[warning],
             warning=warning,
+            cue_energy_summary=cue_energy, include_cues=include_cues,
         )
 
 
@@ -208,8 +221,11 @@ def _audio_analysis_result_for_wav_data(
     bpm_analysis: BpmAnalysis | None = None,
     warnings: list[str] | None = None,
     warning: str | None = None,
+    cue_energy_summary: EnergySummary | None = None,
+    *, include_cues: bool = True,
 ) -> AudioAnalysisResult:
-    cues, cue_warnings = _suggest_cues(energy_summary, duration_seconds, settings)
+    cues, cue_warnings = (_suggest_cues(cue_energy_summary or energy_summary, duration_seconds, settings)
+                          if include_cues else ([], []))
     all_warnings = [*(warnings or []), *cue_warnings]
     bpm_estimate = bpm_analysis.estimate if bpm_analysis else None
     return AudioAnalysisResult(
@@ -232,7 +248,7 @@ def _audio_analysis_result_for_wav_data(
     )
 
 
-def _analyze_wav(audio_path: Path, settings: AnalysisSettings) -> tuple[float, EnergySummary, BpmAnalysis]:
+def _analyze_wav(audio_path: Path, settings: AnalysisSettings) -> tuple[float, EnergySummary, BpmAnalysis, EnergySummary]:
     with wave.open(str(audio_path), "rb") as wav_file:
         frame_rate = wav_file.getframerate()
         frame_count = wav_file.getnframes()
@@ -253,7 +269,13 @@ def _analyze_wav(audio_path: Path, settings: AnalysisSettings) -> tuple[float, E
         window_frames = max(1, int(frame_rate * settings.energy_window_seconds))
         rms_values = _read_window_rms_values(wav_file, channel_count, window_frames)
 
-    return duration_seconds, _summarize_energy(rms_values, settings), _estimate_bpm(rms_values, settings.energy_window_seconds)
+    # Display compression must never change the time coordinate used by cue detection.
+    return (
+        duration_seconds,
+        _summarize_energy(rms_values, settings),
+        _estimate_bpm(rms_values, settings.energy_window_seconds),
+        _summarize_energy(rms_values, settings, compact=False),
+    )
 
 
 def _read_window_rms_values(
@@ -282,7 +304,7 @@ def _read_window_rms_values(
     return rms_values
 
 
-def _summarize_energy(rms_values: list[float], settings: AnalysisSettings) -> EnergySummary:
+def _summarize_energy(rms_values: list[float], settings: AnalysisSettings, compact: bool = True) -> EnergySummary:
     if not rms_values:
         return EnergySummary(
             window_size_seconds=settings.energy_window_seconds,
@@ -293,7 +315,7 @@ def _summarize_energy(rms_values: list[float], settings: AnalysisSettings) -> En
 
     max_rms = max(rms_values)
     mean_rms = sum(rms_values) / len(rms_values)
-    envelope_values = _downsample(rms_values, MAX_ENVELOPE_POINTS)
+    envelope_values = _downsample(rms_values, MAX_ENVELOPE_POINTS) if compact else rms_values
     normalized_envelope = [round(value / max_rms, 6) if max_rms else 0.0 for value in envelope_values]
     return EnergySummary(
         window_size_seconds=settings.energy_window_seconds,

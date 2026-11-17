@@ -1,0 +1,18 @@
+.studio-install { position: relative; flex: none; }
+.studio-install > button { min-height: 30px; padding-inline: 9px; white-space: nowrap; font-size: 11px; }
+.studio-install-help {
+  position: absolute;
+  z-index: 12;
+  inset: calc(100% + 8px) 0 auto auto;
+  width: min(16rem, calc(100vw - 24px));
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 22px #0007;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.studio-install-help p + p { margin-top: 7px; }
+.studio-install-help strong { color: #f2f4f7; }
