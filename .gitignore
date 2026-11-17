@@ -1,0 +1,15 @@
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.env
+cue-output/
+outputs/
+demo-audio/
+.tmp/
+
+real-audio-test/
+real-cue-output/
