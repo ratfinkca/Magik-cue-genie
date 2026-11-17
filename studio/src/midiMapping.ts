@@ -1,4 +1,4 @@
-export type MidiControl = { kind: "note" | "cc"; channel: number; number: number }
+export type MidiControl = { kind: "note" | "cc"; channel: number; number: number; lsb?: number }
 
 export type MidiMessage = (
   | (MidiControl & { kind: "note"; pressed: boolean })
@@ -14,9 +14,10 @@ function integerBetween(value: unknown, minimum: number, maximum: number): value
 
 export function isMidiControl(value: unknown): value is MidiControl {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false
-  const { kind, channel, number } = value as Partial<MidiControl>
+  const { kind, channel, number, lsb } = value as Partial<MidiControl>
   return (kind === "note" || kind === "cc") && integerBetween(channel, 1, 16)
     && integerBetween(number, 0, kind === "cc" ? channelModeStart - 1 : midiMaximum)
+    && (lsb === undefined || (kind === "cc" && integerBetween(lsb, 0, channelModeStart - 1) && lsb !== number))
 }
 
 /** Web MIDI provides a complete message with its status byte. */
@@ -52,14 +53,14 @@ export function midiAbsoluteValue(message: MidiMessage): number | null {
 /** Ignore hardware until it reaches or crosses the software value. Latches until reset. */
 export function createMidiSoftTakeover() {
   const controls = new Map<string, { incoming: number; latched: boolean }>()
-  const halfStep = .5 / midiMaximum + Number.EPSILON
   return {
-    accept(key: string, incoming: number, current: number) {
+    accept(key: string, incoming: number, current: number, resolution = midiMaximum) {
       if (!Number.isFinite(incoming) || incoming < 0 || incoming > 1
-        || !Number.isFinite(current) || current < 0 || current > 1) return false
+        || !Number.isFinite(current) || current < 0 || current > 1
+        || !Number.isInteger(resolution) || resolution < 1) return false
       const previous = controls.get(key)
       if (previous?.latched) return true
-      const reached = Math.abs(current - incoming) <= halfStep
+      const reached = Math.abs(current - incoming) <= .5 / resolution + Number.EPSILON
       const crossed = previous !== undefined && (
         (previous.incoming < current && incoming > current) || (previous.incoming > current && incoming < current)
       )

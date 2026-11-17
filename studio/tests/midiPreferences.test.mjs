@@ -11,7 +11,7 @@ async function compile(module) {
   }).outputText
 }
 
-const { validateMidiPreferences, putMidiBinding, removeMidiBinding, MAX_MIDI_BINDINGS } = await import(
+const { validateMidiPreferences, putMidiBinding, removeMidiBinding, replaceMidiInputBindings, MAX_MIDI_BINDINGS } = await import(
   moduleUrl((await compile('midiPreferences')).replace('"./midiMapping"', JSON.stringify(moduleUrl(await compile('midiMapping'))))))
 
 const cc = { kind: 'cc', channel: 1, number: 7 }
@@ -49,4 +49,38 @@ test('an overfull profile still permits replacing a mapping without deleting ano
   const replaced = putMidiBinding(profile, binding('port-0', 'gain-b'))
   assert.equal(replaced.length, MAX_MIDI_BINDINGS)
   assert.deepEqual(replaced.at(-1), binding('port-0', 'gain-b'))
+})
+
+test('preset preferences preserve precision, inversion and conditional pad assignments across backup validation', () => {
+  const precise = { ...binding('flx', 'A:tempo', { ...cc, number: 0, lsb: 32 }), inverted: true }
+  const pad = { ...binding('go', 'A:hot-5', note), when: { deck: 'A', mode: 'hotcue', shift: true } }
+  const preferences = { version: 1, bindings: [precise, pad], presets: [
+    { inputId: 'flx', presetId: 'ddj-flx4' }, { inputId: 'go', presetId: 'mixstream-pro-go' },
+  ] }
+  assert.deepEqual(validateMidiPreferences(preferences), preferences)
+  assert.equal(validateMidiPreferences({ ...preferences, presets: [{ inputId: 'go', presetId: 'unknown' }] }).presets, undefined)
+})
+
+test('a preset replaces only its chosen input atomically and overlapping CC bytes cannot have separate owners', () => {
+  const before = [binding('one', 'A:play', note), binding('two', 'B:play', note)]
+  const paired = { ...cc, number: 0, lsb: 32 }
+  assert.deepEqual(replaceMidiInputBindings(before, 'one', [
+    { actionId: 'A:tempo', control: paired },
+    { actionId: 'A:play', control: note },
+  ]), [before[1], binding('one', 'A:tempo', paired), before[0]])
+  const fine = binding('one', 'A:filter', { ...cc, number: 32 })
+  assert.deepEqual(putMidiBinding([binding('one', 'A:tempo', paired)], fine), [fine])
+  const full = Array.from({ length: MAX_MIDI_BINDINGS }, (_, index) => binding('other-' + index, 'A:play', note))
+  assert.equal(replaceMidiInputBindings(full, 'one', [{ actionId: 'A:play', control: note }]), null)
+  assert.equal(replaceMidiInputBindings(before, 'one', [{ actionId: 'A:play', control: { ...cc, channel: 0 } }]), null)
+})
+
+test('conditional pad mappings coexist while learning a custom physical pad replaces its preset modes', () => {
+  const first = { ...binding('go', 'A:hot-1', note), when: { deck: 'A', mode: 'hotcue', shift: false } }
+  const second = { ...binding('go', 'A:hot-5', note), when: { deck: 'A', mode: 'hotcue', shift: true } }
+  const third = { ...binding('go', 'A:loop-size-4', note), when: { deck: 'A', mode: 'autoloop' } }
+  const saved = validateMidiPreferences({ version: 1, bindings: [first, second, third] })
+  assert.deepEqual(saved.bindings, [first, second, third])
+  const custom = binding('go', 'A:play', note)
+  assert.deepEqual(putMidiBinding(saved.bindings, custom), [custom])
 })

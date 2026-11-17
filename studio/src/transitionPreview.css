@@ -291,6 +291,9 @@
   background: currentColor;
 }
 .transition-eq-deck .channel-meter { margin-top: 7px; }
+.channel-volume { display: flex; align-items: center; gap: 7px; margin-top: 7px; color: var(--muted); font-size: 11px; }
+.channel-volume input { flex: 1; min-width: 0; accent-color: var(--deck-color); touch-action: none; }
+.channel-volume output { width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 .transition-eq-deck .channel-meter .stereo-meter-rail { height: 6px; }
 .mixer-stem-controls { display: grid; gap: 5px; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line); }
 .mixer-stem-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; }

@@ -388,7 +388,14 @@ test("master gain precedes output protection and each deck is metered between it
       return { ...graphNode(), getFloatTimeDomainData(buffer) { buffer.fill(0); buffer.set(samples) } }
     },
   }
-  const mixer = createTransitionOutput(context, { A: 1, B: 0 }, { masterDb: -6 })
+  const mixer = createTransitionOutput(context, { A: 1, B: 0 }, { masterDb: -6, volumes: { A: 25, B: 80 } })
+  assert.equal(mixer.decks.A.volume.gain.value, .25)
+  assert.equal(mixer.decks.B.volume.gain.value, .8)
+  mixer.setVolume("A", 0)
+  assert.equal(mixer.decks.A.volume.gain.value, 0)
+  assert.equal(mixer.decks.B.volume.gain.value, .8)
+  mixer.setVolume("A", 50)
+  assert.equal(mixer.decks.A.volume.gain.value, .5)
   const [masterFromA] = mixer.decks.A.fader.outputs
   const [masterFromB] = mixer.decks.B.fader.outputs
   const master = masterFromA.node
@@ -411,8 +418,9 @@ test("master gain precedes output protection and each deck is metered between it
   assert.deepEqual(splitters.map(splitter => splitter.outputs.map(out => out.channel)), [[0, 1], [0, 1], [0, 1]])
   assert.equal(mixer.decks.B.fader.gain.value, 0)
   assert.equal(mixer.decks.B.input.outputs[0].node, mixer.decks.B.effects.input)
-  assert.ok(mixer.decks.B.effects.output.outputs.some(out => out.node === splitters[1]))
-  assert.ok(mixer.decks.B.effects.output.outputs.some(out => out.node === mixer.decks.B.fader))
+  assert.ok(mixer.decks.B.effects.output.outputs.some(out => out.node === mixer.decks.B.volume))
+  assert.ok(mixer.decks.B.volume.outputs.some(out => out.node === splitters[1]))
+  assert.ok(mixer.decks.B.volume.outputs.some(out => out.node === mixer.decks.B.fader))
   assert.ok(mixer.protection.outputs.some(out => out.node === splitters[2]))
   assert.ok(mixer.protection.outputs.some(out => out.node === context.destination))
   mixer.getLevels()
@@ -442,6 +450,8 @@ test("Master Out and per-deck FX survive reloads and source loads, and reset ind
     const defaults = DEFAULT_DECK_FX
     assert.equal(initial.masterDb, 0)
     assert.equal(initial.decks.A.gainDb, -8)
+    assert.equal(initial.decks.A.volume, 100)
+    assert.equal(initial.decks.B.volume, 100)
     assert.equal(initial.curve, "linear")
     assert.deepEqual(initial.decks.A.fx, defaults)
 
@@ -449,19 +459,28 @@ test("Master Out and per-deck FX survive reloads and source loads, and reset ind
     initial.setFx("A", { feedback: 68 })
     initial.setFx("B", { kind: "tremolo", delayMs: 440, tremoloDepth: 45 })
     initial.setMasterDb(100)
+    initial.setVolume("A", 35)
+    initial.setVolume("B", 0)
     initial.loadDecoded("A", { name: "Synthetic", buffer: { duration: 12, sampleRate: 48_000 } })
     initial.setGain("A", -8)
 
     const reloaded = mount()
     assert.equal(reloaded.masterDb, 6)
+    assert.equal(reloaded.decks.A.volume, 35)
+    assert.equal(reloaded.decks.B.volume, 0)
+    assert.equal(reloaded.decks.A.gainDb, -8)
     assert.deepEqual(reloaded.decks.A.fx, { ...defaults, enabled: true, mix: 53, feedback: 68 })
     const deckB = { ...defaults, kind: "tremolo", delayMs: 440, tremoloDepth: 45 }
     assert.deepEqual(reloaded.decks.B.fx, deckB)
     reloaded.setFx("A", defaults)
     reloaded.setMasterDb(0)
+    reloaded.setVolume("A", 140)
+    reloaded.setVolume("B", -20)
 
     const reset = mount()
     assert.equal(reset.masterDb, 0)
+    assert.equal(reset.decks.A.volume, 100)
+    assert.equal(reset.decks.B.volume, 0)
     assert.deepEqual(reset.decks.A.fx, defaults)
     assert.deepEqual(reset.decks.B.fx, deckB)
   } finally {

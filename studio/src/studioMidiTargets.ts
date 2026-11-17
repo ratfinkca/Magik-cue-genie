@@ -4,10 +4,13 @@ const deckButtons = [
   ["play", "Play / pause"], ["start-cue", "Pause at start cue"], ["sync", "Sync / tap sync"], ["key-lock", "Key Lock"],
   ["loop-in", "Loop In"], ["loop-out", "Loop Out"], ["loop-beat", "One-beat loop"],
   ["loop-half", "Halve loop"], ["loop-double", "Double loop"], ["loop-exit", "Exit loop"], ["fx", "FX on / off"],
+  ["loop-four", "Four-beat loop / exit"],
+  ...([4, 8, 16, 32] as const).map(beats => [`loop-size-${beats}`, `${beats}-beat loop / exit`] as const),
+  ...([1, 2, 3, 4] as const).map(slot => [`loop-saved-${slot}`, `Saved loop ${slot}`] as const),
   ...Array.from({ length: 8 }, (_, index) => [`hot-${index + 1}`, `Hot cue ${index + 1}`]),
 ] as const
 const deckAxes = [
-  ["tempo", "Tempo fader"], ["gain", "Gain"], ["pan", "Pan"], ["filter", "Filter"],
+  ["tempo", "Tempo fader"], ["gain", "Gain"], ["volume", "Channel volume"], ["pan", "Pan"], ["filter", "Filter"],
   ["low", "Low EQ"], ["mid", "Mid EQ"], ["high", "High EQ"], ["fx-mix", "FX Mix"],
   ["vocals", "Vocals level"], ["drums", "Drums level"], ["bass", "Bass level"], ["other", "Other stems level"],
 ] as const
@@ -43,5 +46,5 @@ export function midiAxis(current: number, min: number, max: number, update: (val
     update(applied)
     return toPosition(applied)
   }
-  return { position: toPosition(current), set }
+  return { position: toPosition(current), set, centered: center !== undefined }
 }

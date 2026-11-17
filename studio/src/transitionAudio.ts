@@ -35,6 +35,7 @@ import {
   normalizeCrossfaderCustom,
   normalizeFaderPosition,
   normalizeGainDb,
+  normalizeChannelVolume,
   PITCH_MAX_PERCENT,
   PITCH_MIN_PERCENT,
 } from "./transitionMixer"
@@ -70,6 +71,7 @@ interface Deck {
   start: string
   speed: string
   gainDb: number
+  volume: number
   pan: number
   filter: number
   fx: DeckFxSettings
@@ -343,7 +345,7 @@ export function createDeckSources() {
 
 const flagsOff = (): DeckFlags => ({ A: false, B: false })
 const emptyPositions = (): Positions => ({ A: 0, B: 0 })
-const emptyDeck = (eq: EqSettings, mixer: Pick<Deck, "gainDb" | "pan" | "filter" | "fx">): Deck => ({
+const emptyDeck = (eq: EqSettings, mixer: Pick<Deck, "gainDb" | "volume" | "pan" | "filter" | "fx">): Deck => ({
   track: null, start: "0", speed: "100", eq, ...mixer, keyLock: false, keyLockPending: false, keyLockError: null,
   stemsStatus: "idle", stemLevels: FULL_STEM_LEVELS, stemsError: null,
   loop: null, loopArmed: false, loading: false, error: null,
@@ -354,6 +356,7 @@ const mixerStorageKey = "magik.transitionMixer"
 function readMixerPreferences() {
   let saved: {
     gains?: Partial<Record<DeckId, unknown>>
+    volumes?: Partial<Record<DeckId, unknown>>
     pan?: Partial<Record<DeckId, unknown>>
     filter?: Partial<Record<DeckId, unknown>>
     fx?: Partial<Record<DeckId, unknown>>
@@ -365,6 +368,7 @@ function readMixerPreferences() {
   try { saved = JSON.parse(localStorage.getItem(mixerStorageKey) || "{}") ?? {} } catch { /* Storage is optional. */ }
   return {
     gains: { A: normalizeGainDb(saved.gains?.A), B: normalizeGainDb(saved.gains?.B) },
+    volumes: { A: normalizeChannelVolume(saved.volumes?.A), B: normalizeChannelVolume(saved.volumes?.B) },
     pan: { A: normalizePan(saved.pan?.A), B: normalizePan(saved.pan?.B) },
     filter: { A: normalizeFilter(saved.filter?.A), B: normalizeFilter(saved.filter?.B) },
     fx: { A: normalizeDeckFx(saved.fx?.A), B: normalizeDeckFx(saved.fx?.B) },
@@ -375,13 +379,13 @@ function readMixerPreferences() {
   }
 }
 
-function readDecks({ gains, pan, filter, fx }: ReturnType<typeof readMixerPreferences>): Record<DeckId, Deck> {
+function readDecks({ gains, volumes, pan, filter, fx }: ReturnType<typeof readMixerPreferences>): Record<DeckId, Deck> {
   let stored: Partial<Record<DeckId, Partial<EqSettings>>> = {}
   try { stored = JSON.parse(localStorage.getItem(eqStorageKey) || "{}") ?? {} } catch { /* Storage is optional. */ }
   function settings(id: DeckId): Deck {
     const eq = flatEq()
     for (const band of EQ_BANDS) eq[band] = normalizeEqDb(stored[id]?.[band] ?? 0)
-    return emptyDeck(eq, { gainDb: gains[id], pan: pan[id], filter: filter[id], fx: fx[id] })
+    return emptyDeck(eq, { gainDb: gains[id], volume: volumes[id], pan: pan[id], filter: filter[id], fx: fx[id] })
   }
   return { A: settings("A"), B: settings("B") }
 }
@@ -446,9 +450,9 @@ function masterGain(db: number) {
   return level === MASTER_MIN_DB ? 0 : .7 * trimGain(level)
 }
 
-type OutputSettings = { masterDb?: number; fx?: Record<DeckId, DeckFxSettings> }
+type OutputSettings = { masterDb?: number; fx?: Record<DeckId, DeckFxSettings>; volumes?: Record<DeckId, number> }
 
-/** Deck meters follow trim and effects, and the master meter follows output protection. */
+/** Deck meters follow trim, effects and channel volume, before the crossfader. */
 export function createTransitionOutput(context: AudioContext, initialFader: Record<DeckId, number>, settings: OutputSettings = {}) {
   const master = context.createGain()
   master.gain.value = masterGain(settings.masterDb ?? 0)
@@ -466,18 +470,29 @@ export function createTransitionOutput(context: AudioContext, initialFader: Reco
     input.channelCount = 2
     input.channelCountMode = "explicit"
     const effects = createDeckEffects(context, settings.fx?.[id] ?? DEFAULT_DECK_FX)
+    const volume = context.createGain()
+    volume.gain.value = normalizeChannelVolume(settings.volumes?.[id]) / 100
     const fader = context.createGain()
     fader.gain.value = initialFader[id]
     input.connect(effects.input)
-    effects.output.connect(fader)
+    effects.output.connect(volume)
+    volume.connect(fader)
     fader.connect(master)
-    return { input, fader, effects }
+    return { input, fader, volume, effects }
   }
 
   const decks = { A: deckOutput("A"), B: deckOutput("B") }
   let meters: Record<keyof MixerLevels, ReturnType<typeof createStereoLevelMeter>> | undefined
   return {
     context, decks, protection,
+    setVolume(id: DeckId, percent: number) {
+      const now = context.currentTime
+      const gain = decks[id].volume.gain
+      const level = normalizeChannelVolume(percent) / 100
+      gain.cancelScheduledValues(now)
+      if (context.state === "running") gain.setTargetAtTime(level, now, .008)
+      else gain.setValueAtTime(level, now)
+    },
     setMasterDb(db: number) {
       const now = context.currentTime
       const gain = masterGain(db)
@@ -488,8 +503,8 @@ export function createTransitionOutput(context: AudioContext, initialFader: Reco
     getLevels(): MixerLevels {
       if (context.state !== "running") return SILENT_MIXER_LEVELS
       meters ??= {
-        A: createStereoLevelMeter(context, decks.A.effects.output),
-        B: createStereoLevelMeter(context, decks.B.effects.output),
+        A: createStereoLevelMeter(context, decks.A.volume),
+        B: createStereoLevelMeter(context, decks.B.volume),
         master: createStereoLevelMeter(context, protection),
       }
       return { A: meters.A.read(), B: meters.B.read(), master: meters.master.read() }
@@ -499,6 +514,7 @@ export function createTransitionOutput(context: AudioContext, initialFader: Reco
       for (const deck of Object.values(decks)) {
         deck.input.disconnect()
         deck.effects.disconnect()
+        deck.volume.disconnect()
         deck.fader.disconnect()
       }
       master.disconnect()
@@ -650,6 +666,7 @@ export function useTransitionAudio() {
         const { A, B } = decksRef.current
         outputRef.current = createTransitionOutput(context, { A: faderGain("A"), B: faderGain("B") }, {
           masterDb: masterDbRef.current, fx: { A: A.fx, B: B.fx },
+          volumes: { A: A.volume, B: B.volume },
         })
         const opened = context
         recordDiagnostic("info", "audio.context.open", { sampleRate: opened.sampleRate, state: opened.state })
@@ -1115,8 +1132,8 @@ export function useTransitionAudio() {
     releaseKeyLock(id)
     releaseStems(id)
     const start = boundedPosition(track, Number.isFinite(startSeconds) ? startSeconds : 0)
-    const { eq, gainDb, pan, filter, fx } = decksRef.current[id]
-    updateDeck(id, { ...emptyDeck(eq, { gainDb, pan, filter, fx }), track, start: String(start) })
+    const { eq, gainDb, volume, pan, filter, fx } = decksRef.current[id]
+    updateDeck(id, { ...emptyDeck(eq, { gainDb, volume, pan, filter, fx }), track, start: String(start) })
     const pausedAt = options && clampTrackTime(options.pausedAt, track.buffer.duration)
     updatePosition(id, pausedAt ?? start)
     setPaused(previous => ({ ...previous, [id]: Boolean(options) }))
@@ -1304,6 +1321,7 @@ export function useTransitionAudio() {
     const { A, B } = decksRef.current
     const preferences = {
       gains: { A: A.gainDb, B: B.gainDb }, pan: { A: A.pan, B: B.pan }, filter: { A: A.filter, B: B.filter },
+      volumes: { A: A.volume, B: B.volume },
       curve: curveRef.current, customCurve: customCurveRef.current, keyLock: keyLockPreference.current,
       masterDb: masterDbRef.current, fx: { A: A.fx, B: B.fx },
     }
@@ -1314,6 +1332,13 @@ export function useTransitionAudio() {
     const normalized = normalizeGainDb(gainDb)
     updateDeck(id, { gainDb: normalized })
     sources.setLevel(id, trimGain(normalized))
+    storeMixer()
+  }
+
+  function setVolume(id: DeckId, value: number) {
+    const volume = normalizeChannelVolume(value)
+    updateDeck(id, { volume })
+    outputRef.current?.setVolume(id, volume)
     storeMixer()
   }
 
@@ -1664,7 +1689,7 @@ export function useTransitionAudio() {
     decks, positions, getPositions, getLevels, fader, playing, starting, paused, mode, error, curve, customCurve, masterDb, keyLockAvailable,
     isStarting: starting.A || starting.B, pausedMode: playMode(paused),
     loadFile, loadDecoded, setCrossfader, setEq, resetEq, setGain, setPan, setFilter, setCurve, setCustomCurve, setSpeed, setKeyLock,
-    setMasterDb, setFx,
+    setMasterDb, setFx, setVolume,
     canPrepareStems, prepareStems: (id: DeckId) => loadStemBank(id), cancelStemPreparation, setStemLevel,
     restoring, restoreStatus, restoreNotice, clearSavedTracks, saveTrackSidecar,
     library, libraryStatus, libraryNotice, addLibraryTracks, loadLibraryTrack, removeLibraryTrack, decodeForPreparation,

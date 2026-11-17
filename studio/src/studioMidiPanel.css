@@ -1,6 +1,6 @@
 .studio-midi {
   box-sizing: border-box;
-  width: min(530px, calc(100% - 24px));
+  width: min(570px, calc(100% - 24px));
   max-height: min(750px, calc(100dvh - 28px));
   padding: 16px;
   color: inherit;
@@ -22,6 +22,13 @@
 .studio-midi-device select { flex: 1 1 auto; min-width: 0; }
 .studio-midi-status:empty { display: none; }
 .studio-midi-status p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.studio-midi-preset { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding-block: 9px; border-block: 1px solid var(--line); }
+.studio-midi-preset > label { display: flex; flex: 1 1 260px; align-items: center; gap: 7px; font-size: 12px; }
+.studio-midi-preset select { flex: 1; min-width: 0; }
+.studio-midi-preset p { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.studio-midi-bank { display: block; margin-top: 3px; font-size: 10px; }
+.studio-midi-invert { display: flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 10px; }
+.studio-midi-invert input { margin: 0; }
 .studio-midi [aria-pressed="true"] { border-color: var(--mint); color: var(--mint); }
 .studio-midi-targets { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .studio-midi-targets ul { margin: 0; padding: 0; list-style: none; }

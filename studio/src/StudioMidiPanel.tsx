@@ -1,6 +1,8 @@
 import { useCallback, useId, useRef, useState } from "react"
-import { MIDI_MAPPING_PREFERENCE_KEY, MAX_MIDI_BINDINGS, putMidiBinding, removeMidiBinding, validateMidiPreferences } from "./midiPreferences"
-import type { MidiBinding, MidiLearnTarget, MidiTarget } from "./midiPreferences"
+import { MIDI_MAPPING_PREFERENCE_KEY, MAX_MIDI_BINDINGS, putMidiBinding, removeMidiBinding, replaceMidiInputBindings, validateMidiPreferences } from "./midiPreferences"
+import type { MidiBinding, MidiLearnTarget, MidiPresetAssignment, MidiTarget } from "./midiPreferences"
+import { controllerPresets, detectControllerPreset } from "./controllerPresets"
+import type { ControllerPresetId } from "./controllerPresets"
 import type { MidiControl } from "./midiMapping"
 import type { useUsbMidi } from "./useUsbMidi"
 import "./studioMidiPanel.css"
@@ -9,33 +11,33 @@ export type { MidiBinding, MidiLearnTarget, MidiTarget } from "./midiPreferences
 
 const groups = ["Deck A", "Deck B", "Mixer"] as const
 
-function initialBindings(): { bindings: MidiBinding[]; storageError: string | null } {
+function initialBindings(): { bindings: MidiBinding[]; presets: MidiPresetAssignment[]; storageError: string | null } {
   try {
     const saved = window.localStorage.getItem(MIDI_MAPPING_PREFERENCE_KEY)
-    if (saved === null) return { bindings: [], storageError: null }
+    if (saved === null) return { bindings: [], presets: [], storageError: null }
     const preferences = validateMidiPreferences(JSON.parse(saved))
-    if (preferences) return { bindings: preferences.bindings, storageError: null }
+    if (preferences) return { bindings: preferences.bindings, presets: preferences.presets ?? [], storageError: null }
   } catch { /* The browser may disallow access to preferences. */ }
-  return { bindings: [], storageError: "Could not read saved MIDI mappings." }
+  return { bindings: [], presets: [], storageError: "Could not read saved MIDI mappings." }
 }
 
 export function useMidiBindings() {
   const [state, setState] = useState(initialBindings)
-  const current = useRef(state.bindings)
+  const current = useRef({ bindings: state.bindings, presets: state.presets })
 
-  const commit = useCallback((bindings: MidiBinding[]) => {
-    current.current = bindings
+  const commit = useCallback((bindings: MidiBinding[], presets = current.current.presets) => {
+    current.current = { bindings, presets }
     let storageError: string | null = null
     try {
-      window.localStorage.setItem(MIDI_MAPPING_PREFERENCE_KEY, JSON.stringify({ version: 1, bindings }))
+      window.localStorage.setItem(MIDI_MAPPING_PREFERENCE_KEY, JSON.stringify({ version: 1, bindings, ...(presets.length ? { presets } : {}) }))
     } catch {
       storageError = "MIDI mappings are available for this session. The browser could not save them."
     }
-    setState({ bindings, storageError })
+    setState({ bindings, presets, storageError })
   }, [])
 
   const setBinding = useCallback((binding: MidiBinding) => {
-    const next = putMidiBinding(current.current, binding)
+    const next = putMidiBinding(current.current.bindings, binding)
     if (next) commit(next)
     else setState(previous => ({ ...previous, storageError: previous.bindings.length >= MAX_MIDI_BINDINGS
       ? `The mapping limit is ${MAX_MIDI_BINDINGS}. Remove an unused mapping to learn another.`
@@ -43,32 +45,56 @@ export function useMidiBindings() {
   }, [commit])
 
   const removeBinding = useCallback((inputId: string, actionId: string) => {
-    const next = removeMidiBinding(current.current, inputId, actionId)
-    if (next.length !== current.current.length) commit(next)
+    const next = removeMidiBinding(current.current.bindings, inputId, actionId)
+    if (next.length !== current.current.bindings.length) commit(next)
   }, [commit])
 
-  return { ...state, setBinding, removeBinding }
+  const applyPreset = useCallback((inputId: string, presetId: ControllerPresetId) => {
+    const preset = controllerPresets.find(item => item.id === presetId)
+    if (!preset) return
+    const next = replaceMidiInputBindings(current.current.bindings, inputId, preset.bindings)
+    if (!next) {
+      setState(previous => ({ ...previous, storageError: `The mapping limit is ${MAX_MIDI_BINDINGS}. Remove unused mappings to apply this preset.` }))
+      return
+    }
+    commit(next, [...current.current.presets.filter(item => item.inputId !== inputId), { inputId, presetId }])
+  }, [commit])
+
+  const autoApplyPresets = useCallback((inputs: readonly { id: string; name: string; manufacturer: string }[]) => {
+    for (const input of inputs) {
+      if (current.current.presets.some(item => item.inputId === input.id)
+        || current.current.bindings.some(item => item.inputId === input.id)) continue
+      const preset = detectControllerPreset(input)
+      if (preset) applyPreset(input.id, preset.id)
+    }
+  }, [applyPreset])
+
+  return { ...state, setBinding, removeBinding, applyPreset, autoApplyPresets }
 }
 
 type PanelProps = {
   midi: ReturnType<typeof useUsbMidi>
   targets: readonly MidiTarget[]
   bindings: readonly MidiBinding[]
+  presets: readonly MidiPresetAssignment[]
+  applyPreset: (inputId: string, presetId: ControllerPresetId) => void
   learning: MidiLearnTarget | null
   learn: (change: MidiLearnTarget | null) => void
   remove: (inputId: string, actionId: string) => void
+  setBinding: (binding: MidiBinding) => void
   storageError?: string | null
 }
 
 function controlLabel(control: MidiControl) {
-  return `${control.kind === "cc" ? "CC" : "Note"} ${control.number} · Ch ${control.channel}`
+  return `${control.kind === "cc" ? "CC" : "Note"} ${control.number}${control.lsb === undefined ? "" : "+" + control.lsb} · Ch ${control.channel}`
 }
 
-export default function StudioMidiPanel({ midi, targets, bindings, learning, learn, remove, storageError }: PanelProps) {
+export default function StudioMidiPanel({ midi, targets, bindings, presets, applyPreset, learning, learn, remove, setBinding, storageError }: PanelProps) {
   const dialog = useRef<HTMLDialogElement>(null)
   const headingId = useId()
   const [open, setOpen] = useState(false)
   const [selectedInput, setSelectedInput] = useState("")
+  const [chosenPreset, setChosenPreset] = useState<{ inputId: string; id: string } | null>(null)
   const [group, setGroup] = useState<MidiTarget["group"]>("Deck A")
 
   function closePanel() {
@@ -92,6 +118,10 @@ export default function StudioMidiPanel({ midi, targets, bindings, learning, lea
   }
   const inputId = inputOptions.has(selectedInput) ? selectedInput : inputOptions.keys().next().value
   const canLearn = Boolean(inputId && midi.status === "connected" && inputOptions.get(inputId)?.connected)
+  const assignedPreset = controllerPresets.find(preset => preset.id === presets.find(item => item.inputId === inputId)?.presetId)
+  const detectedPreset = detectControllerPreset(midi.inputs.find(input => input.id === inputId) ?? { name: "", manufacturer: "" })
+  const selectedPreset = controllerPresets.find(preset => preset.id === (chosenPreset && chosenPreset.inputId === inputId
+    ? chosenPreset.id : assignedPreset?.id ?? detectedPreset?.id))
   const byAction = open ? new Map(bindings.filter(binding => binding.inputId === inputId)
     .map(binding => [binding.actionId, binding])) : new Map<string, MidiBinding>()
   const learningAction = open && learning && learning.inputId === inputId ? targets.find(target => target.id === learning.actionId) : undefined
@@ -120,7 +150,7 @@ export default function StudioMidiPanel({ midi, targets, bindings, learning, lea
             {midi.status === "connecting" ? "Connecting…" : "Enable MIDI"}
           </button>}
           {inputOptions.size > 0 && <label>MIDI input
-            <select value={inputId} onChange={event => {
+            <select aria-label="MIDI input" value={inputId} onChange={event => {
               learn(null)
               setSelectedInput(event.currentTarget.value)
             }}>
@@ -128,12 +158,30 @@ export default function StudioMidiPanel({ midi, targets, bindings, learning, lea
             </select>
           </label>}
         </div>
+        {inputId && <div className="studio-midi-preset">
+          <label>Controller preset
+            <select aria-label="Controller preset" value={selectedPreset?.id ?? ""} onChange={event => {
+              setChosenPreset({ inputId, id: event.currentTarget.value })
+            }}>
+              <option value="">Choose preset</option>
+              {controllerPresets.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+            </select>
+          </label>
+          <button type="button" className="quiet" disabled={!selectedPreset || !canLearn} onClick={() => {
+            if (!selectedPreset) return
+            learn(null)
+            applyPreset(inputId, selectedPreset.id)
+          }}>Apply preset</button>
+          {assignedPreset && <p role="status">{assignedPreset.label} preset saved · {bindings.filter(binding => binding.inputId === inputId).length} mappings</p>}
+          {selectedPreset && <p>{selectedPreset.setup}</p>}
+          <p>Applying a preset replaces this input’s mappings. Move knobs and faders through the on-screen value to pick them up.</p>
+        </div>}
         <div aria-live="polite" className="studio-midi-status">
           {midi.error && <p>{midi.error}</p>}
           {storageError && <p>{storageError}</p>}
           {learningAction ? <p>Waiting for {learningAction.kind === "button" ? "a button press" : "knob or fader movement"} for <strong>{learningAction.label}</strong>.</p>
             : midi.status === "connected" && !midi.inputs.length ? <p>Connect a controller to learn new mappings.</p>
-            : canLearn ? <p>Choose Learn, then use the controller. Learning an already mapped control moves its assignment.</p>
+            : canLearn ? <p>Use the preset or choose Learn for a custom assignment. Learning an already mapped control moves its assignment.</p>
             : inputId ? <p>Saved mappings for this input. Connect the matching controller to learn controls.</p>
             : midi.status === "idle" ? <p>Enable MIDI and connect a controller to map its buttons and faders.</p> : null}
         </div>
@@ -149,7 +197,15 @@ export default function StudioMidiPanel({ midi, targets, bindings, learning, lea
                 const waiting = learningAction?.id === target.id
                 return <li key={target.id}>
                   <span>{target.label}</span>
-                  <span className="studio-midi-control">{binding ? controlLabel(binding.control) : "Unmapped"}</span>
+                  <span className="studio-midi-control">{binding ? <>
+                    {controlLabel(binding.control)}
+                    {binding.when && <span className="studio-midi-bank">{binding.when.mode === "autoloop" ? "Auto Loop"
+                      : binding.when.mode === "savedloop" ? "Saved Loop" : "Hot Cue"}{binding.when.shift ? " · Shift" : ""}</span>}
+                    {target.kind === "absolute" && binding.control.kind === "cc" && <label className="studio-midi-invert">
+                      <input type="checkbox" checked={binding.inverted === true} aria-label={`Reverse ${target.label}`}
+                        onChange={event => setBinding({ ...binding, inverted: event.currentTarget.checked })} />Reverse
+                    </label>}
+                  </> : "Unmapped"}</span>
                   <button className="quiet" type="button" disabled={!canLearn} aria-pressed={waiting}
                     aria-label={`${waiting ? "Cancel learning" : "Learn"} ${target.label}`}
                     onClick={() => learn(waiting ? null : { inputId, actionId: target.id })}>
