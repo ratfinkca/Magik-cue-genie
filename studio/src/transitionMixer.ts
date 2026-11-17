@@ -39,6 +39,11 @@ export function normalizeGainDb(value: unknown) {
     : 0
 }
 
+export function normalizeChannelVolume(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(100, Math.max(0, value)) : 100
+}
+
 export function normalizeFaderPosition(value: number) {
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
 }

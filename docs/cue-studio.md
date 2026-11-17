@@ -58,9 +58,22 @@ On a desktop browser with a writable folder picker, export a playlist to a new f
 
 ## Map USB MIDI
 
-Connect a controller that your operating system recognizes as a MIDI input. Open **MIDI** beside the Library and Cue points tabs, select **Enable MIDI**, and grant browser access if prompted. Choose the input and **Learn** beside a control. Press a hardware button or move a knob or fader. Choose **Remove** to clear a binding. Profiles belong to each browser input ID and are included in backups.
+Open **MIDI** beside the Library and Cue points tabs, select **Enable MIDI**, and grant browser access if prompted. A newly connected **DDJ-FLX4** or **Mixstream Pro Go** input receives its preset automatically when it has no saved assignments. The panel shows the selected input, active preset, and saved mapping count. For a generic device name, select a controller preset and choose **Apply preset**. Applying a preset replaces that input's assignments. Custom Learn mappings and other inputs keep their own saved state.
 
-Mapping supports Note On/Off and 7-bit Control Change. Targets include transport, hot cues, sync, loops, tempo, channel EQ, FX, crossfader, master output, and prepared stem levels. Absolute controls take over when the hardware reaches or crosses the on-screen value. Hot cue pads follow the Studio hot cue setting. This is controller input; controller audio and LED feedback require separate integrations. [Web MIDI specification](https://www.w3.org/TR/webmidi/)
+Both presets cover Play/Pause, Cue to the deck's start position, Sync, Tempo, Gain, channel Volume, High/Mid/Low EQ, Filter, Crossfader, Master Out, hot cues, and loops. Volume scales each channel independently from Gain, after channel effects and before the crossfader. Channel meters include Volume. Knobs and faders use soft takeover, so move through the on-screen value before an adjustment takes effect. **Reverse** beside an axis mapping flips its direction. MIDI settings, including preset selection and direction, are saved in the browser and included in Studio JSON backups.
+
+| Controller | Connection and pads | Loop controls |
+| --- | --- | --- |
+| DDJ-FLX4 | Connect the rear device-connection USB port to the computer. Select **HOT CUE** on each deck for its eight pads. | **IN/OUT** capture endpoints. **4 BEAT/EXIT** starts four beats or exits a live loop. The cue/loop call arrows halve and double the loop. **Shift + 4 BEAT/EXIT** exits. |
+| Mixstream Pro Go | Connect the computer USB port, then open **Control Center → Source → Computer Mode**. In **Hot Cue** mode, the four pads trigger cues 1–4. Hold **Shift** for 5–8. | **Auto Loop** pads select 4, 8, 16, and 32 beats. Press the active size again to exit. **Shift + Auto Loop pads** halve, double, set one beat, and exit. **Saved Loop** pads toggle the first four saved loops in track cue order. |
+
+These layouts reuse Studio's selected Quantize and hot-cue behavior. The Mixstream Shift bank and shifted Auto Loop shortcuts are Studio assignments. After reconnecting, press the intended Mixstream pad-mode button to establish the matching software mode. The DDJ-FLX4's Sync message occurs when its physical button is released. Numark's Computer Mode setup requires its Windows driver on Windows. [DDJ-FLX4 MIDI chart](https://downloads.support.alphatheta.com/software_info/dj-controllers/DDJ-FLX4/DDJ-FLX4_MIDI_message_List_E1.pdf), [DDJ-FLX4 manual](https://assets.ctfassets.net/q602vtcuu3w3/2vz7GMLHawLZBK6gWpCP9V/26bd62eef3eca3714ddb1d3396d30f7b/DDJ-FLX4_manual_EN.pdf), [Numark Computer Mode setup](https://support.numark.com/en/support/solutions/articles/69000839982-numark-mixstream-pro-go-serato-and-virtual-dj-support)
+
+The FLX4 protocol uses paired 14-bit CC messages. The Mixstream uses 7-bit mixer controls and a 14-bit tempo pair. Mixstream message addresses follow the pinned upstream Mixxx mapping. Physical controller testing is pending, including tempo direction and exact device port names. [Mixstream mapping](https://github.com/mixxxdj/mixxx/blob/7660154896e72d7f2c2f64035830f6501052b07d/res/controllers/Numark-Mixstream-Pro.midi.xml)
+
+Jog scratching, controller LEDs and screens, Mixstream Roll, hardware FX controls, and headphone cue routing need further integration. Selecting Mixstream Roll makes its preset pads inactive. Audio output follows the browser and operating system's selected audio device.
+
+For other controllers, choose **Learn** beside a control, then press a hardware button or move a knob or fader. Choose **Remove** to clear a binding. Learning a paired preset knob retains both CC bytes and its precision. Generic learned controls support Note On/Off and 7-bit Control Change. Targets also include FX and prepared stem levels. [Web MIDI specification](https://www.w3.org/TR/webmidi/)
 
 ## Configure optional local models
 

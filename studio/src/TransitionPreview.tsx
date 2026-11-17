@@ -37,6 +37,7 @@ import StereoMeter, { useStudioMeters } from "./StereoMeter"
 import { recordDiagnostic } from "./studioDiagnostics"
 import StudioBackup from "./StudioBackup"
 import StudioMidiPanel, { useMidiBindings } from "./StudioMidiPanel"
+import { controllerPresets } from "./controllerPresets"
 import type { MidiLearnTarget } from "./midiPreferences"
 import { createStudioMidiRouter } from "./studioMidiRouting"
 import { midiAxis, studioMidiTargets } from "./studioMidiTargets"
@@ -213,6 +214,12 @@ function DeckMix({ id, audio, meterRef }: {
         <ChannelFxControls id={id} fx={deck.fx} disabled={disabled} onChange={patch => audio.setFx(id, patch)} />
       </div>
       {deck.track?.file && !deck.track.demo && <MixerStems id={id} audio={audio} />}
+      <label className="channel-volume">Volume
+        <input type="range" min="0" max="100" step="1" value={deck.volume} aria-label={label + " channel volume"}
+          onChange={event => audio.setVolume(id, Number(event.currentTarget.value))}
+          onDoubleClick={() => audio.setVolume(id, 100)} />
+        <output>{deck.volume}%</output>
+      </label>
       <div className="channel-meter">
         <StereoMeter label={label} meterRef={meterRef} title="Peak level after channel controls, before the crossfader." />
       </div>
@@ -497,6 +504,30 @@ export default function TransitionPreview({ keyNotation, setKeyNotation }: {
     const position = audio.getPositions()[id]
     const pending = pendingLoopIn(id)
     const live = deck.loopArmed && deck.loop && position < deck.loop.start ? null : deck.loop
+    if (action.startsWith("loop-saved-")) {
+      const index = Number(action.slice(11)) - 1
+      const saved = sessions[id].cues.map((cue, cueIndex) => ({ range: getLoop(cue, duration), cueIndex, start: cue.time_seconds }))
+        .filter(item => item.range !== null)[index]
+      if (saved?.range) {
+        sessions[id].select(saved.cueIndex)
+        const range = { start: saved.start, end: saved.range.end_seconds }
+        if (live && Math.abs(live.start - range.start) < .001 && Math.abs(live.end - range.end) < .001) audio.setLoop(id, null)
+        else audio.setLoop(id, range, true)
+      }
+      return
+    }
+    if (action === "loop-four" || action.startsWith("loop-size-")) {
+      if (action === "loop-four" && live) { audio.setLoop(id, null); return }
+      const beats = ([4, 8, 16, 32] as const).find(value => value === (action === "loop-four" ? 4 : Number(action.slice(10))))
+      if (beats === undefined) return
+      const range = makeBeatLoop(live?.start ?? pending ?? position, beats, beatTimes, bpm,
+        live || pending !== null ? "off" : quantize, duration)?.range
+      if (range) {
+        if (live && Math.abs(live.start - range.start) < .001 && Math.abs(live.end - range.end) < .001) audio.setLoop(id, null)
+        else if (audio.setLoop(id, range)) setPendingLoopIn(id, null)
+      }
+      return
+    }
     if (action === "loop-in" || action === "loop-out") {
       const at = captureLoopEdge(position, beatTimes, quantize, duration)
       if (at === null) return
@@ -531,6 +562,7 @@ export default function TransitionPreview({ keyNotation, setKeyNotation }: {
         return midiAxis(Number(deck.speed), min, max, value => changeTempo(id, value), 100, .01)
       }
       case "gain": return midiAxis(deck.gainDb, GAIN_MIN_DB, GAIN_MAX_DB, value => audio.setGain(id, value), 0)
+      case "volume": return midiAxis(deck.volume, 0, 100, value => audio.setVolume(id, value))
       case "pan": return midiAxis(deck.pan, -100, 100, value => audio.setPan(id, value), 0)
       case "filter": return midiAxis(deck.filter, -100, 100, value => audio.setFilter(id, value), 0)
       case "low": case "mid": case "high":
@@ -543,7 +575,7 @@ export default function TransitionPreview({ keyNotation, setKeyNotation }: {
   }
 
   const [midiRouter] = useState(createStudioMidiRouter)
-  const { bindings, setBinding, removeBinding, storageError } = useMidiBindings()
+  const { bindings, presets, setBinding, removeBinding, applyPreset, autoApplyPresets, storageError } = useMidiBindings()
   const [midiLearning, setMidiLearning] = useState<MidiLearnTarget | null>(null)
   const midiLearnRef = useRef<MidiLearnTarget | null>(null)
   function learnMidi(target: MidiLearnTarget | null) {
@@ -553,6 +585,7 @@ export default function TransitionPreview({ keyNotation, setKeyNotation }: {
   const usbMidi = useUsbMidi({
     onMessage: (input, bytes) => midiRouter.receive(input.id, bytes, {
       bindings, targets: studioMidiTargets, learning: midiLearnRef.current,
+      preset: controllerPresets.find(preset => preset.id === presets.find(assignment => assignment.inputId === input.id)?.presetId),
       learned: binding => { learnMidi(null); setBinding(binding) },
       press: pressMidiAction, axis: getMidiAxis,
     }),
@@ -561,6 +594,7 @@ export default function TransitionPreview({ keyNotation, setKeyNotation }: {
       if (midiLearnRef.current?.inputId === inputId) learnMidi(null)
     },
   })
+  useLayoutEffect(() => { autoApplyPresets(usbMidi.inputs) }, [autoApplyPresets, usbMidi.inputs])
   useLayoutEffect(() => { midiRouter.updateBindings(bindings) }, [bindings, midiRouter])
   useLayoutEffect(() => { midiRouter.observeAxes(getMidiAxis) })
   useEffect(() => {
@@ -899,8 +933,8 @@ export default function TransitionPreview({ keyNotation, setKeyNotation }: {
               <StudioMidiPanel midi={{ ...usbMidi, connect: () => {
                 void audio.prepareControllerPlayback()
                 return usbMidi.connect()
-              } }} targets={studioMidiTargets} bindings={bindings} learning={midiLearning} learn={learnMidi}
-                remove={removeBinding} storageError={storageError} />
+              } }} targets={studioMidiTargets} bindings={bindings} presets={presets} applyPreset={applyPreset}
+                learning={midiLearning} learn={learnMidi} remove={removeBinding} setBinding={setBinding} storageError={storageError} />
               <StudioPreparationSettings preferences={preparationPreferences} change={preferences => {
                 setPreparationPreferences(preferences)
                 writeStudioPreferences(preferences)

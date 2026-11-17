@@ -52,6 +52,16 @@ test("MIDI learn rejects malformed events, unsupported statuses and channel-mode
   ]) assert.equal(isMidiControl(candidate), false)
 })
 
+test("14-bit CC validates a distinct fine controller while preserving its main identity", () => {
+  const main = { kind: "cc", channel: 2, number: 11 }
+  assert.equal(isMidiControl({ ...main, lsb: 43 }), true)
+  assert.equal(midiControlKey({ ...main, lsb: 43 }), midiControlKey(main))
+  for (const lsb of [11, -1, 120, 1.5, "43", null]) {
+    assert.equal(isMidiControl({ ...main, lsb }), false, String(lsb))
+  }
+  assert.equal(isMidiControl({ kind: "note", channel: 1, number: 11, lsb: 43 }), false)
+})
+
 test("pickup waits for the first reach or crossing and latches an independent key", () => {
   const takeover = createMidiSoftTakeover()
   assert.equal(takeover.accept("deckA", .1, .55), false)
@@ -74,4 +84,11 @@ test("pickup respects the current target and permits a hardware step at the half
   assert.equal(takeover.accept("moving", .55, .75), false)
   assert.equal(takeover.accept("moving", Number.NaN, .75), false)
   assert.equal(takeover.accept("moving", .8, .75), true)
+})
+
+test("14-bit pickup waits for a fine reach or crossing", () => {
+  const takeover = createMidiSoftTakeover()
+  assert.equal(takeover.accept("fine", 8190 / 16383, 8192 / 16383, 16383), false)
+  assert.equal(takeover.accept("fine", 8191 / 16383, 8192 / 16383, 16383), false)
+  assert.equal(takeover.accept("fine", 8192 / 16383, 8192 / 16383, 16383), true)
 })
