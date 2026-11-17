@@ -1,73 +1,51 @@
-# Magik-cue-genie
+# Magik Cue Genie
 
-Magik-cue-genie is a local-first DJ cue suggestion tool. The MVP analyzes local audio files and produces reviewable cue-point suggestions for Engine DJ preparation without modifying audio files or writing to any DJ software database.
+Magik Cue Genie is a local-first DJ preparation and transition practice tool. Cue Studio combines a two-deck mixer, waveform and cue editing, and a reusable Library. The Python CLI generates cue suggestions, JSON sidecars, and reports for local audio. Source audio and DJ application databases stay untouched.
 
-## Project Plan
+## Try Cue Studio
 
-### Milestone 1: Safe CLI Prototype
+[Open Cue Studio on GitHub Pages](https://ratfinkca.github.io/Magik-cue-genie/)
 
-Build a command-line tool that:
+The hosted preview is static. Load the synthetic demo pair with the sparkle beside **Deck controls**, or select audio from your device to practice a transition. Playback, cue and loop editing, the Library, and backup import and export run in the browser. Browser support determines whether USB MIDI, writable-folder export, and app installation are available.
 
-- Accepts one audio file or a directory of audio files.
-- Analyzes each file locally.
-- Suggests useful cue points such as intro, first downbeat, breakdown, drop, outro, and energy changes.
-- Writes JSON sidecar files next to, or inside a chosen output directory for, the analyzed tracks.
-- Generates a simple HTML report summarizing cue suggestions.
-- Uses generated synthetic audio fixtures for automated tests.
+Run Studio locally to analyze new tracks, generate automatic cue suggestions, or separate and restore stems. Local analysis uses the Python bridge on the same loopback address as Studio. Browser data is tied to its origin and profile, so the Pages preview and a local address have separate libraries. Use a Studio JSON backup to move preparation between them, then re-add the original audio.
 
-This milestone must not:
+### Run locally
 
-- Modify original audio files.
-- Write to Engine DJ, Mixxx, Rekordbox, Serato, or other DJ library databases.
-- Require copyrighted sample tracks.
+Use Node.js 22.12+ with npm and Python 3.11+. FFmpeg is optional for decoding formats beyond PCM WAV in the Python bridge. Run this from the repository checkout:
 
-### Milestone 2: Review Workflow
+```sh
+cd studio
+npm ci
+npm run dev
+```
 
-Improve the prototype so users can inspect and refine suggestions before any future export step:
+Open the loopback URL printed by Vite. Open a track on either deck or load one from **Library**, then choose **Cue points → Analyze**. Set `MAGIK_PYTHON` to your Python executable or `MAGIK_FFMPEG` to your FFmpeg executable if Studio cannot find them. The basic Studio analyzer loads the Python source from the checkout. Install the editable Python package separately if you want the CLI command.
 
-- Add clearer confidence scores and reasons for each cue.
-- Add report filtering and sorting.
-- Add configuration for cue labels, max cue count, and output paths.
-- Add regression tests using synthetic audio patterns.
+### Install as an app
 
-### Milestone 3: Export Research
+From `studio/`, build and launch the production preview on a fixed local port:
 
-Research export formats and database integrations without writing to production DJ libraries:
+```sh
+npm run build
+npm run preview -- --port 4175 --strictPort
+```
 
-- Document Engine DJ database structure and risks.
-- Prototype export into isolated test fixtures only.
-- Define backup and rollback requirements before any database-writing feature.
+Open `http://127.0.0.1:4175/` and let it cache its app files. Use **Install Studio** when offered, or the browser's install command. After the first successful load, supported browsers can open the cached app and play audio from disk or their local Library without a live preview server. Start the preview again for new analysis and local stems. Installation and data remain tied to the address and browser profile used for setup.
 
-## Proposed Initial Tech Stack
+## Documentation
 
-- Python for the CLI and analysis code.
-- Typer for command-line interface ergonomics.
-- pytest for automated tests.
-- JSON sidecar files for machine-readable cue suggestions.
-- Jinja2 or simple static HTML generation for reports.
-- librosa for audio analysis experiments once the scaffold is ready.
-- ffmpeg or soundfile/audioread as needed for file decoding support.
+- [Cue Studio guide](docs/cue-studio.md) covers decks, beatgrids, loops, USB MIDI, local analysis, and Library workflows.
+- [Optional local vocal analysis](docs/studio-vocals.md) covers setup and the model's review limits.
+- [Sidecar compatibility](docs/schema-versioning.md) and [output examples](docs/output-examples.md) describe the CLI data formats.
+- [CLI MVP specification](SPEC.md) and the [research roadmap](docs/research/2026-11-16-landscape-and-roadmap.md) describe the original goals and architectural decisions.
+- [Playlist and hardware research](docs/research/2026-11-16-prepared-playlists-hardware-export.md) discusses vendor handoffs and format limits.
 
-The first implementation should start small: parse inputs, validate paths, emit placeholder JSON/report structures, and test behavior using generated synthetic audio. Deeper signal analysis can be added after the output contract is stable.
+## Python CLI
 
-## How To Run
+The CLI analyzes uncompressed 16-bit PCM mono or stereo WAV. With FFmpeg available, it also decodes MP3, M4A, FLAC, AIFF, and AIF through a temporary WAV. The CLI emits reviewable intro, outro, and RMS energy-shift suggestions, with provisional BPM where the onset evidence supports it. Studio's beatgrid and manual cue preparation are a separate workflow.
 
-The current implementation is a safe runnable scaffold. It validates file paths, discovers supported audio file extensions, writes JSON sidecars, and creates a simple HTML report. WAV files get real `duration_seconds` values and a basic RMS `energy_summary` from Python's built-in `wave` module. Supported non-WAV files (`.mp3`, `.m4a`, `.flac`, `.aiff`, and `.aif`) can be analyzed when `ffmpeg` is installed: the CLI decodes them to temporary 16-bit PCM WAV files, analyzes those temporary files, then deletes them. Key, beat grid, and phrase detection are not implemented yet.
-
-The current WAV energy summary supports common uncompressed 16-bit PCM mono/stereo files. It stores a compact summary with `window_size_seconds`, `max_rms`, `mean_rms`, and a normalized envelope rather than a full waveform.
-
-The cue heuristics currently implemented are conservative `intro`, `outro`, and generic `energy_shift` candidates for WAV files. The `intro` cue looks for a sustained transition from silence or very low energy into meaningful audio near the beginning of the track. The `outro` cue looks for a useful point inside the final sustained energy region before a fade or ending, and is constrained to the final track region by the active analysis settings. `energy_shift` cues mark notable RMS energy changes, capped at three per track, and their reason notes whether the change is an energy rise or energy drop. Cue entries may include optional `metadata` with machine-readable heuristic details. These are energy-envelope heuristics only, not beat-aware or phrase-aware, and they do not attempt breakdown, build, or drop detection yet. Silence-only files produce no cues.
-
-Preliminary BPM reporting uses a simple RMS onset-interval heuristic and is shown only when confidence is high enough. BPM is currently for review/reporting only; cue snapping and phrase detection do not use it yet. `report.html` includes compact per-track Diagnostics, BPM Debug, Beat / Onset Diagnostics, and Tempo Candidate Diagnostics sections plus aggregate BPM debug counts. `report.json` includes `analysis.bpm_debug`, `analysis.beat_debug`, `analysis.tempo_candidates_debug`, and `summary.bpm`, to help tune local BPM analysis before beat- or phrase-aware cue placement is added.
-
-Sidecars include a top-level `warnings` list for non-fatal limitations and caveats. For example, supported non-WAV files warn when temporary ffmpeg decoding was used, or when ffmpeg is unavailable or decoding fails. Track warnings are also shown in the HTML report.
-
-Unsupported files and malformed WAV files are represented separately in the reports as skipped files with `source_file`, `reason`, and optional `detail`. They do not receive JSON sidecars. Supported non-WAV files receive analyzed sidecars when ffmpeg decoding succeeds, or placeholder sidecars with track warnings when ffmpeg is unavailable or decoding fails.
-
-Each run writes both `report.html` for human review and `report.json` for automated tooling. The aggregate JSON report includes `schema_version`, `analyzed_tracks`, `skipped_files`, and summary counts for analyzed tracks, skipped files, cues, and warnings.
-
-Schema compatibility rules are documented in [docs/schema-versioning.md](docs/schema-versioning.md).
-Representative output shapes are shown in [docs/output-examples.md](docs/output-examples.md).
+Each run writes per-track version 1 JSON sidecars and aggregate `report.html` and `report.json`. Reports identify skipped files and decode limitations. The CLI records reasons and confidence with each suggestion and keeps source files read-only. Use a new output directory when rerunning analysis to preserve existing sidecars.
 
 Install the package in editable mode:
 
@@ -97,7 +75,7 @@ magik-cue-genie analyze .\music --output .\cue-output --reference-csv .\referenc
 
 The reference CSV columns are `source_file`, `reference_bpm`, `reference_key`, and `notes`. Rows match analyzed tracks by source-file basename, case-insensitive.
 
-## Demo
+### Synthetic demo
 
 Generate synthetic WAV files for reproducible local demos:
 
@@ -113,7 +91,7 @@ magik-cue-genie analyze .\demo-audio --output .\cue-output
 
 Open `.\cue-output\report.html` in a browser to review the intro, outro, energy-shift, and silence-only examples. The generated `demo-audio` directory is ignored by git.
 
-## Reviewing Cue Quality
+### Review cue quality
 
 Open `report.html` from the output directory and use the Review / Reference area plus the Review column for each cue. Ratings can be blank, `good`, `early`, `late`, `wrong`, or `maybe`; optional notes can be added beside each rating. Use **Download review feedback** to export a browser-generated JSON feedback file. The export does not modify source audio, sidecar JSON, or `report.json`.
 
@@ -132,14 +110,16 @@ Review workflow:
 5. Optionally rerun the report with previous feedback for a read-only comparison overlay:
 
 ```powershell
-magik-cue-genie analyze .\real-audio-test --output .\real-cue-output --profile balanced --feedback-json .\magik-cue-genie-review-feedback.json
+magik-cue-genie analyze .\demo-audio --output .\cue-output\review --profile balanced --feedback-json .\magik-cue-genie-review-feedback.json
 ```
 
 When previous feedback includes reference BPM/key/source values, `report.html` also shows a diagnostic detected-vs-reference comparison and flags possible half-time or double-time BPM estimates. This is for review only and does not affect analysis or cue placement.
 
-Cue quality is still heuristic and energy-envelope based. The current cues are not beat-aware or phrase-aware yet.
+Use the feedback overlay to compare CLI energy-envelope suggestions against your listening notes.
 
-Run tests:
+## Development and tests
+
+Run the Python suite from the checkout after installing the development dependencies:
 
 ```powershell
 python -m pytest
@@ -157,10 +137,23 @@ Or run the helper script:
 .\scripts\test.ps1
 ```
 
-## Safety Principles
+The Studio tests cover the browser modules and the local analyzer bridge with generated audio. From the checkout:
+
+```sh
+cd studio
+npm ci
+node --test
+npm run build
+```
+
+The Python package lives in `src/magik_cue_genie/`. The React/Vite app is in `studio/src/`, and its loopback analyzer middleware is in `studio/server/`.
+
+The Pages workflow tests and builds Studio on pull requests and deploys the static build from `main`. To enable it in a fork, set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**. [Cue Studio Pages workflow](.github/workflows/studio-pages.yml) · [GitHub Pages publishing setup](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
+
+## Safety principles
 
 - Treat source audio as read-only.
 - Write only to explicit output paths or clearly named sidecar files.
-- Never write to DJ software databases during the MVP.
+- Never write to DJ software databases as part of this workflow.
 - Keep generated suggestions explainable and easy to review.
 - Prefer small, reviewable changes over broad rewrites.

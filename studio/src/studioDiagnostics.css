@@ -1,0 +1,36 @@
+.studio-diagnostics { position: relative; z-index: 20; }
+.studio-diagnostics summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #20242c;
+  font-size: 11px;
+  font-weight: 650;
+}
+.studio-diagnostics summary::-webkit-details-marker { display: none; }
+.studio-diagnostics[open] summary { border-color: var(--mint); color: var(--mint); }
+.studio-diagnostics-panel {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 6px);
+  display: grid;
+  justify-items: start;
+  gap: 9px;
+  width: min(278px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 8px 18px #08090bb0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.studio-diagnostics-panel button { min-height: 32px; font-size: 11px; color: #f2f4f7; }
+.studio-diagnostics-panel [role="status"]:empty { display: none; }
+.studio-diagnostics-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.studio-recovery { width: min(480px, calc(100% - 24px)); margin: 12vh auto 0; padding: 22px; display: grid; gap: 14px; }
+.studio-recovery h1 { font-size: 21px; }
+.studio-recovery p { color: var(--muted); }

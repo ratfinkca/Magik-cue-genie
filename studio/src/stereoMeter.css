@@ -1,0 +1,42 @@
+.stereo-meter {
+  --left: 0%;
+  --right: 0%;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+.stereo-meter-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 9px;
+}
+.stereo-meter-head strong { color: #e8edf9; font-size: 10px; }
+.stereo-meter-line {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1;
+}
+.stereo-meter-rail {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
+  background: #080a0f;
+  border: 1px solid #343946;
+  border-radius: 2px;
+}
+.stereo-meter-fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #4fb68b 0%, #84d899 69%, #ffd474 89%, #fb7b67 100%);
+}
+.stereo-meter-rail[data-side="left"] .stereo-meter-fill { clip-path: inset(0 calc(100% - var(--left)) 0 0); }
+.stereo-meter-rail[data-side="right"] .stereo-meter-fill { clip-path: inset(0 calc(100% - var(--right)) 0 0); }
+.channel-meter { margin-top: 9px; }

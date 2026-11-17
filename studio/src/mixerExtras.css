@@ -1,0 +1,60 @@
+.mixer-master-out {
+  --deck-color: var(--mint);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+.mixer-master-meter { display: grid; gap: 5px; min-width: 0; }
+.mixer-master-meter > span { color: var(--muted); font-size: 9px; }
+.mixer-master-meter .stereo-meter-rail { height: 7px; }
+
+.channel-fx-controls {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  min-width: 0;
+}
+.channel-fx-controls .deck-knob { gap: 3px; }
+.channel-fx-controls .deck-knob-handle { width: clamp(29px, 3vw, 35px); }
+.channel-fx-controls .channel-fx-toggle {
+  min-height: 28px;
+  padding-inline: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.channel-fx-toggle[aria-pressed="true"] {
+  color: var(--deck-color, var(--mint));
+  border-color: color-mix(in srgb, var(--deck-color, var(--mint)) 65%, var(--line));
+  background: color-mix(in srgb, var(--deck-color, var(--mint)) 15%, #20242c);
+}
+
+.mixer-effects { display: grid; align-content: center; gap: 5px; min-width: 0; }
+.mixer-effects-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px; }
+.mixer-effects-header h3 { font-size: 12px; }
+.mixer-effects-header .segments button { min-height: 23px; min-width: 24px; padding-inline: 5px; }
+.mixer-effects-header .segments button[aria-pressed="true"] {
+  color: var(--deck-color, var(--mint));
+  background: color-mix(in srgb, var(--deck-color, var(--mint)) 19%, #151820);
+}
+.mixer-effect-picker { min-width: 0; }
+.mixer-effect-picker > select { width: 100%; min-width: 0; min-height: 28px; padding-block: 3px; font-size: 11px; }
+.mixer-effects-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(92px, 100%), 1fr));
+  gap: 7px 10px;
+}
+.mixer-effects-fields label { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 10px; }
+.mixer-effects-fields label > span { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px 6px; }
+.mixer-effects-fields output { color: #e8edf9; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mixer-effects-fields input { width: 100%; min-width: 0; margin: 0; accent-color: var(--deck-color, var(--mint)); }
+.mixer-beat-preset { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 10px; }
+.mixer-beat-preset .segments { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mixer-beat-preset .segments button { min-height: 27px; padding: 0; color: #f0f3f8; }
+.mixer-beat-preset .segments button[aria-pressed="true"] {
+  color: var(--deck-color);
+  background: color-mix(in srgb, var(--deck-color) 19%, #151820);
+}
